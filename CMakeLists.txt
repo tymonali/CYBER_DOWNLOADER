@@ -23,7 +23,10 @@ qt_add_qml_module(appYouTubeDownloaderForNatalie
     QML_FILES
         Main.qml
     RESOURCES
-        images/Natalie.jpg  # <-- Просто указываем файл напрямую!
+        images/Natalie.jpg
+    SOURCES
+        downloadcontroller.h
+        downloadcontroller.cpp
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

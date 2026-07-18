@@ -1,3 +1,5 @@
+import QtCore // <-- ДОБАВИТЬ ЭТУ СТРОКУ
+import CyberCore 1.0
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs // Необходим для работы с FolderDialog
@@ -10,7 +12,9 @@ Window {
 
     // 1. Определение платформы
     readonly property bool isMobile: Qt.platform.os === "android" || Qt.platform.os === "ios"
-
+    DownloadController {
+        id: downloader
+    }
     // 2. Адаптивные размеры окна
     visibility: isMobile ? Window.FullScreen : Window.AutomaticVisibility
     width: isMobile ? Screen.width : 450
@@ -196,17 +200,30 @@ Window {
                 }
 
                 onClicked: {
-                    console.log("Квантовый мост запущен для ссылки:", urlInput.text)
+                    // Вызываем инвокабельный метод C++, передавая ссылку из поля ввода и путь сохранения
+                    downloader.startDownload(urlInput.text, pathText.text)
                 }
             }
 
-            // Индикатор выполнения (Хакерская шкала прогресса)
+            // Статусная строка процесса (Показывает, что происходит под капотом)
+            Text {
+                id: statusText
+                // Теперь текст летит напрямую из C++ свойства status
+                text: downloader.status
+                color: cyberTheme.neonCyan
+                font.pointSize: window.isMobile ? 12 : 10
+                font.family: cyberTheme.fontHack
+                anchors.left: parent.left
+                bottomPadding: -5
+            }
+
+            // Шкала прогресса
             ProgressBar {
                 id: downloadProgress
                 width: parent.width
-                value: 0.65 // 65% для теста (потом свяжем с C++)
+                // Теперь значение (от 0.0 до 1.0) берется из C++ свойства progress
+                value: downloader.progress
 
-                // Задаем явную высоту для всего компонента
                 implicitHeight: window.isMobile ? 12 : 8
 
                 background: Rectangle {
@@ -217,13 +234,11 @@ Window {
 
                 contentItem: Item {
                     anchors.fill: parent
-
                     Rectangle {
-                        // Растягиваем полосу в зависимости от прогресса (от 0.0 до 1.0)
                         width: downloadProgress.visualPosition * parent.width
                         height: parent.height
                         radius: 2
-                        color: cyberTheme.neonCyan // Прогресс горит неоновым цианом
+                        color: cyberTheme.neonCyan
                     }
                 }
             }
