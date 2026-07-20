@@ -3,18 +3,17 @@
 #include <QRegularExpression>
 #include <QDebug>
 #include <QDir>
+#include <QDateTime>
 
 DownloadController::DownloadController(QObject *parent)
     : QObject(parent), m_process(new QProcess(this)), m_progress(0.0), m_status("> ОЖИДАНИЕ ИНИЦИАЛИЗАЦИИ...")
 {
-    // Подключаем чтение вывода утилиты в реальном времени
     connect(m_process, &QProcess::readyReadStandardOutput, this, &DownloadController::handleProcessOutput);
     connect(m_process, &QProcess::readyReadStandardError, this, &DownloadController::handleProcessOutput);
-
-    // Подключаем отслеживание завершения процесса
-    //connect(m_process, &QProcess::obsolete_finished, this, &DownloadController::handleProcessFinished);
     connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, &DownloadController::handleProcessFinished);
+
+    appendLog("[SYSTEM] CYBER_DOWNLOADER KERNEL INITIALIZED...");
 }
 
 DownloadController::~DownloadController()
@@ -25,58 +24,78 @@ DownloadController::~DownloadController()
     }
 }
 
-void DownloadController::startDownload(const QString &url, const QString &outputFolder)
+void DownloadController::appendLog(const QString &text)
 {
-    if (url.isEmpty()) {
+    QString timeStamp = QDateTime::currentDateTime().toString("hh:mm:ss");
+    m_logOutput += QString("[%1] %2\n").arg(timeStamp, text);
+    emit logOutputChanged();
+}
+
+void DownloadController::startDownload(const QString &rawUrl, const QString &outputFolder, bool onlyAudio)
+{
+    if (rawUrl.isEmpty()) {
         updateStatus("> ОШИБКА: ССЫЛКА ПУСТА");
+        appendLog("[ERROR] URL input string is empty!");
         return;
     }
 
     if (m_process->state() == QProcess::Running) {
         updateStatus("> ОШИБКА: ПРОЦЕСС УЖЕ ЗАПУЩЕН");
+        appendLog("[WARN] Process is already active.");
         return;
     }
 
+    // Очистка лога перед новым запуском
+    m_logOutput.clear();
+    emit logOutputChanged();
+
+    appendLog("[INIT] Preparing download stream...");
+
+    QString cleanUrl = rawUrl.trimmed();
+
+    if (cleanUrl.contains("tiktok.com")) {
+        int queryIndex = cleanUrl.indexOf('?');
+        if (queryIndex != -1) cleanUrl = cleanUrl.left(queryIndex);
+    } else if (cleanUrl.contains("youtube.com") || cleanUrl.contains("youtu.be")) {
+        int listIndex = cleanUrl.indexOf("&list=");
+        if (listIndex != -1) cleanUrl = cleanUrl.left(listIndex);
+        int indexIndex = cleanUrl.indexOf("&index=");
+        if (indexIndex != -1) cleanUrl = cleanUrl.left(indexIndex);
+        int featureIndex = cleanUrl.indexOf("&feature=");
+        if (featureIndex != -1) cleanUrl = cleanUrl.left(featureIndex);
+    }
+
+    appendLog(QString("[TARGET] Target URL: %1").arg(cleanUrl));
     updateProgress(0.0);
     updateStatus("> АНАЛИЗ ВИДЕОПОТОКА...");
 
-    // Формируем шаблон имени файла (сохраняем оригинальное название видео)
-    QString outputTemplate = QDir(outputFolder).filePath("%(title)s.%(ext)s");
-
-    //// Аргументы для запуска yt-dlp
-    //QStringList arguments;
-    //arguments << "--newline"
-    //          // --- ИЗМЕНЯЕМ СТРАТЕГИЮ ВЫБОРА ФОРМАТА ---
-    //          // Качаем лучшее видео, но аудио СТРОГО в формате m4a (кодек AAC)
-    //          << "-f" << "bv*+ba[ext=m4a]/b[ext=mp4]/bv*+ba"
-    //          // -----------------------------------------
-
-    //          << "--merge-output-format" << "mp4"
-    //          << "--ffmpeg-location" << "C:/ffmpeg/bin"
-    //          << "--cookies" << "D:/cookies.txt"
-    //          << "-o" << outputTemplate
-    //          << url;
-
-    // Получаем путь к папке, где лежит запущенный exe-файл приложения
+    QString extensionTemplate = onlyAudio ? "%(title)s.mp3" : "%(title)s.%(ext)s";
+    QString outputTemplate = QDir(outputFolder).filePath(extensionTemplate);
     QString appDir = QCoreApplication::applicationDirPath();
 
     QStringList arguments;
-    arguments << "--newline"
-              // Наша проверенная стратегия выбора совместимого формата видео + аудио (AAC)
-              << "-f" << "bv*+ba[ext=m4a]/b[ext=mp4]/bv*+ba"
-              << "--merge-output-format" << "mp4"
+    arguments << "--newline";
 
-              // --- ДИНАМИЧЕСКИЕ ПУТИ ДЛЯ ПЕРЕНОСИМОСТИ СИСТЕМЫ ---
-              // Говорим yt-dlp искать ffmpeg.exe в той же папке, где лежит само приложение
+    if (onlyAudio) {
+        arguments << "-x" << "--audio-format" << "mp3" << "--audio-quality" << "0";
+        appendLog("[MODE] Audio extraction active (MP3, 320k)");
+    } else {
+        arguments << "-S" << "vcodec:h264,res,acodec:m4a"
+                  << "--merge-output-format" << "mp4"
+                  << "--recode-video" << "mp4";
+        appendLog("[MODE] Video stream capture active (H.264/MP4 Enforcement)");
+    }
+
+    arguments << "--geo-bypass"
+              << "--extractor-args" << "youtube:player_client=web,mweb"
+              << "--user-agent" << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
               << "--ffmpeg-location" << appDir
-
-              // Указываем искать файл cookies.txt прямо рядом с нашим exe
               << "--cookies" << appDir + "/cookies.txt"
-              // ----------------------------------------------------
-
               << "-o" << outputTemplate
-              << url;
-    // Имя исполняемого файла (на Windows — yt-dlp.exe, на Android настроим позже)
+              << cleanUrl;
+
+    appendLog("[EXEC] Launching yt-dlp binary backend...");
+
 #ifdef Q_OS_WIN
     QString program = "yt-dlp.exe";
 #else
@@ -88,14 +107,13 @@ void DownloadController::startDownload(const QString &url, const QString &output
 
 void DownloadController::handleProcessOutput()
 {
-    // Читаем СЫРОЙ вывод из стандартного потока и потока ошибок целиком
     QString stdOut = QString::fromUtf8(m_process->readAllStandardOutput()).trimmed();
     QString stdErr = QString::fromUtf8(m_process->readAllStandardError()).trimmed();
 
     if (!stdOut.isEmpty()) {
-        qDebug() << "=== YT-DLP OUTPUT ===" << Qt::endl << stdOut;
+        // Записываем каждый чистый вывод утилиты в наш лог
+        appendLog(stdOut);
 
-        // Оставляем нашу регулярку для процентов, проверяя весь кусок текста
         static QRegularExpression progressRegex(R"(\[download\]\s+(\d+\.\d+)%)");
         QRegularExpressionMatchIterator it = progressRegex.globalMatch(stdOut);
         while (it.hasNext()) {
@@ -111,8 +129,7 @@ void DownloadController::handleProcessOutput()
     }
 
     if (!stdErr.isEmpty()) {
-        // Вот здесь мы наконец-то увидим настоящую ошибку от YouTube!
-        qDebug() << "=== YT-DLP ERROR ===" << Qt::endl << stdErr;
+        appendLog("[STDERR] " + stdErr);
     }
 }
 
@@ -121,8 +138,10 @@ void DownloadController::handleProcessFinished(int exitCode, QProcess::ExitStatu
     if (exitCode == 0 && exitStatus == QProcess::NormalExit) {
         updateProgress(1.0);
         updateStatus("> СОХРАНЕНИЕ ФАЙЛА УСПЕШНО ЗАВЕРШЕНО!");
+        appendLog("[SUCCESS] Process completed with code 0. File saved.");
     } else {
         updateStatus("> КРИТИЧЕСКИЙ СБОЙ ПРИ СКАЧИВАНИИ");
+        appendLog(QString("[FAIL] Process crashed or aborted with exit code: %1").arg(exitCode));
     }
 }
 
