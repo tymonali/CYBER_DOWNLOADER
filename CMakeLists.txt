@@ -27,6 +27,8 @@ qt_add_qml_module(appYouTubeDownloaderForNatalie
     SOURCES
         downloadcontroller.h
         downloadcontroller.cpp
+        QML_FILES CyberTerminal.qml
+        QML_FILES CyberSplashScreen.qml
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
