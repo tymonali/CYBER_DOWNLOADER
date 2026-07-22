@@ -87,10 +87,13 @@ void DownloadController::startDownload(const QString &rawUrl, const QString &out
     }
 
     arguments << "--geo-bypass"
+              << "--encoding" << "utf-8"  // Force UTF-8 encoding
+              //<< "--no-cookies-update"
               << "--extractor-args" << "youtube:player_client=web,mweb"
               << "--user-agent" << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
               << "--ffmpeg-location" << appDir
               << "--cookies" << appDir + "/cookies.txt"
+
               << "-o" << outputTemplate
               << cleanUrl;
 
@@ -101,6 +104,9 @@ void DownloadController::startDownload(const QString &rawUrl, const QString &out
 #else
     QString program = "yt-dlp";
 #endif
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert("PYTHONIOENCODING", "utf-8");
+    m_process->setProcessEnvironment(env);
 
     m_process->start(program, arguments);
 }

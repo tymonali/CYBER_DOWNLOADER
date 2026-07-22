@@ -357,6 +357,38 @@ Window {
                         font.family: cyberTheme.fontHack
                     }
                 }
+
+                // Область перехвата клика правой кнопки мыши
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.RightButton
+                    onClicked: (mouse) => {
+                        if (mouse.button === Qt.RightButton) {
+                            logContextMenu.popup()
+                        }
+                    }
+                }
+
+                // Контекстное меню лога
+                Menu {
+                    id: logContextMenu
+
+                    MenuItem {
+                        text: "Копировать выделенное"
+                        enabled: logArea.selectedText.length > 0
+                        onTriggered: logArea.copy()
+                    }
+
+                    MenuItem {
+                        text: "Копировать весь лог"
+                        enabled: logArea.text.length > 0
+                        onTriggered: {
+                            logArea.selectAll()
+                            logArea.copy()
+                            logArea.deselect()
+                        }
+                    }
+                }
             }
         }
     }

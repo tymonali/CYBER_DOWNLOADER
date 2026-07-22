@@ -5,6 +5,7 @@
 # Сборка и временные файлы Qt
 build/
 images/
+importedcontent/
 *.user
 *.o
 *.obj

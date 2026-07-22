@@ -23,7 +23,7 @@ qt_add_qml_module(appYouTubeDownloaderForNatalie
     QML_FILES
         Main.qml
     RESOURCES
-        images/Natalie.jpg
+
     SOURCES
         downloadcontroller.h
         downloadcontroller.cpp
